@@ -253,8 +253,24 @@ var svc = {
   },
 
   async saveSchedule(rows, y, m, user) {
-    var res = await callGAS('saveSchedule', {rows:rows, year:y, month:m, user:user});
-    return res && res.ok;
+    // 1) 해당 월 기존 데이터 삭제
+    var clr = await callGAS('clearMonth', {year:y, month:m});
+    if (!clr || !clr.ok) return false;
+
+    // 2) 한 행씩 순서대로 저장 (URL 길이 제한 우회)
+    for (var i = 0; i < rows.length; i++) {
+      var res = await callGAS('saveRow', {row: rows[i]});
+      if (!res || !res.ok) return false;
+    }
+
+    // 3) 로그 기록
+    await callGAS('appendLog', {
+      type: '월배정',
+      target: y + '-' + pad(m),
+      prev: '', next: '배정완료',
+      user: user, reason: '달력 배정 저장'
+    });
+    return true;
   },
 
   async swapByDate(dateA, dateB, reason, user) {
