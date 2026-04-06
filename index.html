@@ -236,11 +236,14 @@ var svc = {
     if(!raw || !Array.isArray(raw)) return [];
     return raw
       .map(function(r){
+        var rawDate = String(r['날짜']||'').replace(/^'/,'');
+        if (rawDate.length > 10 && rawDate.indexOf('T') >= 0) rawDate = rawDate.slice(0,10);
+        var pts = rawDate.split('-');
         return {
-          date:    String(r['날짜']||''),
-          year:    Number(r['연도']||0),
-          month:   Number(r['월']||0),
-          day:     Number(String(r['날짜']||'').split('-')[2]||0),
+          date:    rawDate,
+          year:    Number(pts[0]||r['연도']||0),
+          month:   Number(pts[1]||r['월']||0),
+          day:     Number(pts[2]||0),
           dow:     String(r['요일']||''),
           orig:    r['원래감독']||null,
           current: r['현재감독']||null,
@@ -249,7 +252,7 @@ var svc = {
           note:    String(r['비고']||'')
         };
       })
-      .filter(function(r){ return r.year===y && r.month===m; });
+      .filter(function(r){ return r.year===y && r.month===m; }); });
   },
 
   async saveSchedule(rows, y, m, user) {
