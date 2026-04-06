@@ -1,6 +1,3 @@
-js
-const USE_MOCK = false;
-const GAS_URL  = 'https://script.google.com/macros/s/AKfycbxCtkcYnh1MKB0LWjfye2M7XrTVYHyl0uFUaAMpRk6Mdw6BjJuWZDDoOHNiCcKObyUiCw/exec';
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -188,9 +185,17 @@ tr:hover td{background:#f9fafb;}
 
 <script>
 // ═══════════════════════════════════════
-//  ★ 비밀번호 설정 (여기서만 변경)
+//  ★ Google Sheets 연동 설정
+//  1) GAS_URL에 배포 URL 붙여넣기
+//  2) USE_MOCK을 false로 변경
 // ═══════════════════════════════════════
-// 비밀번호: localStorage에 저장 (없으면 기본값 '1234')
+const USE_MOCK = false;
+const GAS_URL  = 'https://script.google.com/macros/s/AKfycbxCtkcYnh1MKB0LWjfye2M7XrTVYHyl0uFUaAMpRk6Mdw6BjJuWZDDoOHNiCcKObyUiCw/exec';
+// 예: 'https://script.google.com/macros/s/AKfy.../exec'
+
+// ═══════════════════════════════════════
+//  ★ 비밀번호 설정
+// ═══════════════════════════════════════
 function getStoredPW(){ return localStorage.getItem('supervision_pw')||'1234'; }
 function setStoredPW(pw){ localStorage.setItem('supervision_pw',pw); }
 
@@ -257,8 +262,109 @@ function autoAssign(y,m,userExcl=[],startIdx=0){
 // ═══════════════════════════════════════
 //  서비스
 // ═══════════════════════════════════════
+// ═══════════════════════════════════════
+//  GAS API 호출 헬퍼 (USE_MOCK=false 시 사용)
+// ═══════════════════════════════════════
+async function gasGet(action, params={}){
+  const url=new URL(GAS_URL);
+  url.searchParams.set('action',action);
+  Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,String(v)));
+  const res=await fetch(url.toString());
+  return res.json();
+}
+async function gasPost(body){
+  const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  return res.json();
+}
+
+// ═══════════════════════════════════════
+//  로딩 상태 표시
+// ═══════════════════════════════════════
+function showLoading(){
+  document.getElementById('page').innerHTML=`<div style="text-align:center;padding:3rem;color:#9ca3af;font-size:14px;">⏳ 데이터를 불러오는 중...</div>`;
+}
+
 const svc={
-  getSchedule:(y,m)=>store.schedule.filter(r=>r.year===y&&r.month===m),
+  // ── 감독표 조회 ──
+  async getSchedule(y,m){
+    if(USE_MOCK) return store.schedule.filter(r=>r.year===y&&r.month===m);
+    try{
+      const data=await gasGet('getSchedule',{year:y,month:m});
+      // GAS에서 온 데이터를 내부 형식으로 변환
+      return (data||[]).map(r=>({
+        date:r['날짜'],year:+r['연도'],month:+r['월'],day:+r['날짜']?.split('-')[2],
+        dow:r['요일'],orig:r['원래감독']||null,current:r['현재감독']||null,
+        status:r['상태'],type:r['배정구분'],note:r['비고']||''
+      }));
+    }catch(e){toast('데이터 로드 실패: '+e.message,true);return [];}
+  },
+
+  // ── 감독표 저장 ──
+  async saveSchedule(rows,y,m,user){
+    if(USE_MOCK){
+      store.schedule=store.schedule.filter(r=>!(r.year===y&&r.month===m));
+      store.schedule.push(...rows);
+      store.logs.unshift({time:nowStr(),type:'월배정',target:\`\${y}-\${String(m).padStart(2,'0')}\`,prev:'',next:'배정완료',user,reason:'달력 배정 저장'});
+      return;
+    }
+    try{
+      await gasPost({action:'saveSchedule',rows,year:y,month:m,user});
+    }catch(e){toast('저장 실패: '+e.message,true);}
+  },
+
+  // ── 날짜 교체 ──
+  async swapByDate(dsA,dsB,reason,user){
+    if(USE_MOCK){
+      const rowA=store.schedule.find(r=>r.date===dsA);
+      const rowB=store.schedule.find(r=>r.date===dsB);
+      if(!rowA||!rowB)return{ok:false,msg:'데이터를 찾을 수 없습니다.'};
+      if(rowA.status==='제외'||rowB.status==='제외')return{ok:false,msg:'배정 제외일은 교체할 수 없습니다.'};
+      const tA=rowA.current,tB=rowB.current;
+      if(tA===tB)return{ok:false,msg:'같은 감독자라 교체할 필요가 없습니다.'};
+      rowA.current=tB;rowA.status='변경';rowA.type='교체';
+      rowB.current=tA;rowB.status='변경';rowB.type='교체';
+      store.logs.unshift({time:nowStr(),type:'교체',target:\`\${dsA}↔\${dsB}\`,prev:\`\${tA}/\${tB}\`,next:\`\${tB}/\${tA}\`,user,reason});
+      return{ok:true};
+    }
+    try{
+      return await gasPost({action:'swapByDate',dateA:dsA,dateB:dsB,reason,user});
+    }catch(e){return{ok:false,msg:'교체 실패: '+e.message};}
+  },
+
+  // ── 로그 조회 ──
+  async getLogs(){
+    if(USE_MOCK) return store.logs;
+    try{
+      const data=await gasGet('getLogs');
+      return (data||[]).map(r=>({
+        time:r['변경시간'],type:r['작업유형'],target:r['날짜또는대상월'],
+        prev:r['이전값'],next:r['새값'],user:r['작업자'],reason:r['사유']
+      }));
+    }catch(e){toast('로그 로드 실패',true);return [];}
+  },
+
+  // ── 제외일 조회 ──
+  async getHolidays(){
+    if(USE_MOCK) return store.holidays;
+    try{
+      const data=await gasGet('getHolidays');
+      return (data||[]).map(r=>({
+        date:r['날짜'],type:r['유형'],desc:r['설명'],assign:r['배정여부']
+      }));
+    }catch(e){return store.holidays;}
+  },
+
+  // ── 통계 (로컬 계산 공통) ──
+  getStats(rows){
+    const s={};TEACHERS.forEach(t=>{s[t]={name:t,origCount:0,currCount:0,removed:0,added:0};});
+    rows.forEach(r=>{
+      if(r.orig)s[r.orig].origCount++;
+      if(r.current)s[r.current].currCount++;
+      if(r.orig&&r.current&&r.orig!==r.current){s[r.orig].removed++;s[r.current].added++;}
+    });
+    return Object.values(s);
+  }
+};
   saveSchedule(rows,y,m,user){
     store.schedule=store.schedule.filter(r=>!(r.year===y&&r.month===m));
     store.schedule.push(...rows);
@@ -276,16 +382,7 @@ const svc={
     store.logs.unshift({time:nowStr(),type:'교체',target:`${dsA}↔${dsB}`,prev:`${tA}/${tB}`,next:`${tB}/${tA}`,user,reason});
     return{ok:true};
   },
-  getStats(y,m){
-    const rows=store.schedule.filter(r=>r.year===y&&r.month===m&&r.status!=='제외');
-    const s={};TEACHERS.forEach(t=>{s[t]={name:t,origCount:0,currCount:0,removed:0,added:0};});
-    rows.forEach(r=>{
-      if(r.orig)s[r.orig].origCount++;
-      if(r.current)s[r.current].currCount++;
-      if(r.orig&&r.current&&r.orig!==r.current){s[r.orig].removed++;s[r.current].added++;}
-    });
-    return Object.values(s);
-  }
+
 };
 
 // ═══════════════════════════════════════
@@ -402,8 +499,11 @@ function showLockModal(){
 // ═══════════════════════════════════════
 //  P1 : 월간 감독표
 // ═══════════════════════════════════════
-function P1(){
-  const s=st.schedule,rows=svc.getSchedule(s.y,s.m),today=new Date();
+async function P1(){
+  const s=st.schedule;
+  showLoading();
+  const rows=await svc.getSchedule(s.y,s.m);
+  const today=new Date();
   let calBody='';
   if(!rows.length){
     calBody=`<div class="info-box">📌 해당 월 데이터가 없습니다. [월별 배정] 탭에서 먼저 배정을 생성해주세요.</div>`;
@@ -699,7 +799,7 @@ function P2(){
   document.getElementById('btnClear')?.addEventListener('click',()=>{s.rows=[];s.userExcl=[];render();});
   document.getElementById('btnSave')?.addEventListener('click',()=>{
     if(!s.rows.length)return;
-    svc.saveSchedule(s.rows,s.y,s.m,getUser());
+    await svc.saveSchedule(s.rows,s.y,s.m,getUser());
     toast(`${s.y}년 ${s.m}월 감독표가 저장되었습니다.`);
   });
   document.querySelectorAll('.as-sel').forEach(sel=>{
@@ -731,9 +831,10 @@ function P2(){
 // ═══════════════════════════════════════
 //  P3 : 교체 관리
 // ═══════════════════════════════════════
-function P3(){
+async function P3(){
   const s=st.swap;
-  const allRows=svc.getSchedule(s.y,s.m);
+  showLoading();
+  const allRows=await svc.getSchedule(s.y,s.m);
   const byD={};allRows.forEach(r=>byD[r.date]=r);
 
   const stepA=s.selA?`<span class="step-chip">${s.selA.date} ${s.selA.dow} · ${s.selA.teacher}</span>`:`<span class="step-chip empty-chip">① 교체할 날짜 선택</span>`;
@@ -828,7 +929,7 @@ function P3(){
       </div>
     </div>`,()=>{
       const reason=document.getElementById('swapReason')?.value||'';
-      const res=svc.swapByDate(A.date,B.date,reason,getUser());
+      const res=await svc.swapByDate(A.date,B.date,reason,getUser());
       if(res.ok){toast('교체가 완료되었습니다. 변경 내용이 기록되었습니다.');s.selA=null;s.selB=null;render();}
       else toast(res.msg,true);
     });
@@ -838,8 +939,12 @@ function P3(){
 // ═══════════════════════════════════════
 //  P4 : 월별 통계
 // ═══════════════════════════════════════
-function P4(){
-  const s=st.stats,rows=svc.getSchedule(s.y,s.m).filter(r=>r.status!=='제외'),stats=svc.getStats(s.y,s.m);
+async function P4(){
+  const s=st.stats;
+  showLoading();
+  const allRows=await svc.getSchedule(s.y,s.m);
+  const rows=allRows.filter(r=>r.status!=='제외');
+  const stats=svc.getStats(rows);
   document.getElementById('page').innerHTML=`
   <div class="card">
     <div class="row-controls">${yearSel('st_y',s.y)}${monSel('st_m',s.m)}<button class="btn sm" id="stL">조회</button></div>
@@ -864,8 +969,9 @@ function P4(){
 // ═══════════════════════════════════════
 //  P5 : 변경 로그
 // ═══════════════════════════════════════
-function P5(){
-  const logs=store.logs;
+async function P5(){
+  showLoading();
+  const logs=await svc.getLogs();
   document.getElementById('page').innerHTML=`
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.875rem">
