@@ -143,7 +143,7 @@ var DOW      = ['일','월','화','수','목','금','토'];
 var CFG      = { skipWeekends: true, continueFromLastMonth: true };
 
 var store = {
-  assignRows: [], userExcl: [], lastIdx: 0,
+  assignRows: [], userExcl: [], lastIdx: 0, assignDirty: false,
   holidays: [
     {date:'2026-04-14', assign:'N', desc:'임시공휴일'},
     {date:'2026-04-21', assign:'N', desc:'중간고사 1일'},
@@ -442,100 +442,162 @@ function printHTML(y,m,rows){var byD={};rows.forEach(function(r){byD[r.date]=r;}
 
 // ── P2: 월별 배정 ─────────────────────────────────────────
 async function P2(){
-  var s=st.assign, rows=store.assignRows, grid='';
-  if(rows.length){
-    var fd=dow(s.y,s.m,1), total=dim(s.y,s.m), byD={};
-    rows.forEach(function(r){byD[r.date]=r;});
-    grid+=DOW.map(function(d,i){return'<div class="dow-hd '+(i===0?'sun':i===6?'sat':'')+'">'+d+'</div>';}).join('');
-    for(var i=0;i<fd;i++) grid+='<div class="e-cell empty"></div>';
-    for(var d=1;d<=total;d++){
-      var ds=fmt(s.y,s.m,d), row=byD[ds], dw2=dow(s.y,s.m,d);
-      var sat=dw2===6, sun=dw2===0;
-      var dd='<div class="cell-d '+(sat?'sat':sun?'sun':'')+'">'+d+'</div>';
-      if(sat||sun){grid+='<div class="e-cell wknd">'+dd+'<div style="font-size:10px;color:#9ca3af;margin-top:2px;">주말</div></div>';continue;}
-      if(row.status==='제외'){
-        grid+='<div class="e-cell excl" data-ds="'+ds+'">'+dd+'<div style="font-size:10px;color:#92400e;font-weight:700;margin-top:2px;">&#128683; '+(row.note||'제외')+'</div><div class="hint">클릭&#8594;복구</div></div>';
+  var s = st.assign;
+
+  // Sheets에 저장된 데이터가 있으면 불러와서 편집 상태로 복원
+  if (store.assignRows.length === 0) {
+    var saved = await svc.getSchedule(s.y, s.m);
+    if (saved.length > 0) {
+      store.assignRows = saved;  // 저장된 데이터로 복원
+    }
+  }
+
+  var rows = store.assignRows;
+  var grid = '';
+
+  if (rows.length) {
+    var fd = dow(s.y,s.m,1), total = dim(s.y,s.m), byD = {};
+    rows.forEach(function(r){ byD[r.date] = r; });
+    grid += DOW.map(function(d,i){ return '<div class="dow-hd '+(i===0?'sun':i===6?'sat':'')+'">'+d+'</div>'; }).join('');
+    for (var i=0; i<fd; i++) grid += '<div class="e-cell empty"></div>';
+    for (var d=1; d<=total; d++) {
+      var ds = fmt(s.y,s.m,d), row = byD[ds], dw2 = dow(s.y,s.m,d);
+      var sat = dw2===6, sun = dw2===0;
+      var dd = '<div class="cell-d '+(sat?'sat':sun?'sun':'')+'">'+d+'</div>';
+      if (sat||sun) { grid += '<div class="e-cell wknd">'+dd+'<div style="font-size:10px;color:#9ca3af;margin-top:2px;">주말</div></div>'; continue; }
+      if (!row || row.status === '제외') {
+        var note = row ? (row.note||'제외') : '제외';
+        grid += '<div class="e-cell excl" data-ds="'+ds+'">'+dd+'<div style="font-size:10px;color:#92400e;font-weight:700;margin-top:2px;">&#128683; '+note+'</div><div class="hint">클릭&#8594;복구</div></div>';
       } else {
-        var sel=TEACHERS.map(function(t){return'<option'+(t===row.current?' selected':'')+'>'+t+'</option>';}).join('');
-        grid+='<div class="e-cell normal" data-ds="'+ds+'">'+dd+'<select class="asel" data-ds="'+ds+'">'+sel+'</select><div class="hint">클릭&#8594;제외</div></div>';
+        var sel = TEACHERS.map(function(t){ return '<option'+(t===row.current?' selected':'')+'>'+t+'</option>'; }).join('');
+        grid += '<div class="e-cell normal" data-ds="'+ds+'">'+dd+'<select class="asel" data-ds="'+ds+'">'+sel+'</select><div class="hint">클릭&#8594;제외</div></div>';
       }
     }
   }
 
-  document.getElementById('page').innerHTML=
+  // 저장 버튼: 수정 사항이 있을 때만 활성화
+  var hasSaved = rows.length > 0;
+  var hasUnsaved = store.assignDirty;
+
+  document.getElementById('page').innerHTML =
     '<div class="card">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px;">'
     +'<div style="font-size:12px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:999px;padding:4px 12px;font-weight:600;">&#128275; 관리자 모드</div>'
     +'<div style="display:flex;gap:6px;"><button class="btn sm ghost" id="bCpw">&#128273; 비밀번호 변경</button><button class="btn sm ghost" id="bLk">&#128274; 잠금</button></div>'
     +'</div>'
     +'<div class="row-controls">'+ysel('as_y',s.y)+msel('as_m',s.m)
-    +'<button class="btn sm primary" id="bAuto">자동 배정</button>'
+    +'<button class="btn sm primary" id="bLoad">&#128260; 불러오기</button>'
+    +'<button class="btn sm ghost" id="bAuto">자동 배정</button>'
     +'<button class="btn sm ghost" id="bClr">초기화</button>'
-    +'<button class="btn sm success" id="bSave"'+(rows.length?'':' disabled')+'>저장</button>'
+    +'<button class="btn sm success" id="bSave"'+(hasSaved?'':' disabled')+'>&#128190; 저장'+(hasUnsaved?' *':'')+' </button>'
     +'</div>'
+    +(hasUnsaved ? '<div class="info-box">&#9998; 저장되지 않은 변경 사항이 있습니다. [저장]을 눌러주세요.</div>' : '')
     +(!rows.length
-      ?'<div class="warn-box"><b>&#128204; 사용 방법</b><br>① 연도·월 선택 후 [자동 배정]<br>② 제외할 날짜 클릭 → 노란색<br>③ 드롭다운으로 감독자 변경<br>④ [저장]</div>'
-      :'<div class="legend" style="margin-bottom:.75rem"><div class="leg"><div class="leg-dot" style="background:#fff;border:1px solid #d1d5db"></div>배정일</div><div class="leg"><div class="leg-dot" style="background:#fef9c3;border:1px solid #fde047"></div>제외일</div></div><div class="cal-wrap"><div class="cal-grid" id="aGr">'+grid+'</div></div>')
+      ? '<div class="warn-box"><b>&#128204; 사용 방법</b><br>① 연도·월 선택 후 <b>[불러오기]</b> (저장된 배정 표시)<br>② 또는 <b>[자동 배정]</b>으로 새로 생성<br>③ 달력에서 날짜 클릭 → 제외/복구<br>④ 드롭다운으로 감독자 변경<br>⑤ <b>[저장]</b> 클릭</div>'
+      : '<div class="legend" style="margin-bottom:.75rem">'
+        +'<div class="leg"><div class="leg-dot" style="background:#fff;border:1px solid #d1d5db"></div>배정일 (드롭다운으로 변경)</div>'
+        +'<div class="leg"><div class="leg-dot" style="background:#fef9c3;border:1px solid #fde047"></div>제외일 (클릭→복구)</div>'
+        +'</div>'
+        +'<div class="cal-wrap"><div class="cal-grid" id="aGr">'+grid+'</div></div>')
     +'</div>';
 
-  document.getElementById('bLk').addEventListener('click',function(){
-    unlocked=false;
-    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
+  // ── 잠금 ──
+  document.getElementById('bLk').addEventListener('click', function(){
+    unlocked = false;
+    document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('active'); });
     document.querySelector('[data-tab="schedule"]').classList.add('active');
-    tab='schedule'; render(); toast('잠겼습니다.');
+    tab = 'schedule'; render(); toast('잠겼습니다.');
   });
 
-  document.getElementById('bCpw').addEventListener('click',function(){
-    var root=document.getElementById('modalRoot');
-    root.innerHTML='<div class="modal-overlay" id="ov"><div class="modal" style="max-width:360px"><h3>&#128273; 비밀번호 변경</h3><div style="display:flex;flex-direction:column;gap:10px;"><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">현재 비밀번호</div><input type="password" id="c1" style="width:100%"></div><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">새 비밀번호</div><input type="password" id="c2" style="width:100%"></div><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">새 비밀번호 확인</div><input type="password" id="c3" style="width:100%"></div></div><div id="ce" style="color:#b91c1c;font-size:12px;margin-top:.5rem;min-height:18px;"></div><div class="modal-btns"><button class="btn ghost" id="mCancel">취소</button><button class="btn primary" id="mOk">변경</button></div></div></div>';
-    root.querySelector('#mCancel').addEventListener('click',function(){root.innerHTML='';});
-    root.querySelector('#ov').addEventListener('click',function(e){if(e.target.id==='ov')root.innerHTML='';});
-    root.querySelector('#mOk').addEventListener('click',function(){
+  // ── 비밀번호 변경 ──
+  document.getElementById('bCpw').addEventListener('click', function(){
+    var root = document.getElementById('modalRoot');
+    root.innerHTML = '<div class="modal-overlay" id="ov"><div class="modal" style="max-width:360px"><h3>&#128273; 비밀번호 변경</h3><div style="display:flex;flex-direction:column;gap:10px;"><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">현재 비밀번호</div><input type="password" id="c1" style="width:100%"></div><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">새 비밀번호</div><input type="password" id="c2" style="width:100%"></div><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">새 비밀번호 확인</div><input type="password" id="c3" style="width:100%"></div></div><div id="ce" style="color:#b91c1c;font-size:12px;margin-top:.5rem;min-height:18px;"></div><div class="modal-btns"><button class="btn ghost" id="mCancel">취소</button><button class="btn primary" id="mOk">변경</button></div></div></div>';
+    root.querySelector('#mCancel').addEventListener('click', function(){ root.innerHTML=''; });
+    root.querySelector('#ov').addEventListener('click', function(e){ if(e.target.id==='ov') root.innerHTML=''; });
+    root.querySelector('#mOk').addEventListener('click', function(){
       var cur=root.querySelector('#c1').value, nw=root.querySelector('#c2').value, cf=root.querySelector('#c3').value, er=root.querySelector('#ce');
-      if(cur!==getPW()){er.textContent='현재 비밀번호가 틀렸습니다.';return;}
-      if(!nw||nw.length<4){er.textContent='4자 이상 입력해주세요.';return;}
-      if(nw!==cf){er.textContent='새 비밀번호가 일치하지 않습니다.';return;}
+      if(cur!==getPW()){ er.textContent='현재 비밀번호가 틀렸습니다.'; return; }
+      if(!nw||nw.length<4){ er.textContent='4자 이상 입력해주세요.'; return; }
+      if(nw!==cf){ er.textContent='새 비밀번호가 일치하지 않습니다.'; return; }
       setPW(nw); root.innerHTML=''; toast('비밀번호가 변경되었습니다.');
     });
   });
 
-  document.getElementById('bAuto').addEventListener('click',function(){
-    var y=+document.getElementById('as_y').value, m=+document.getElementById('as_m').value;
-    st.assign.y=y; st.assign.m=m; store.userExcl=[];
-    store.assignRows=autoAssign(y,m); render();
-  });
-  document.getElementById('bClr').addEventListener('click',function(){store.assignRows=[];store.userExcl=[];render();});
-  document.getElementById('bSave').addEventListener('click',async function(){
-    if(!store.assignRows.length) return;
-    var ok=await svc.saveSchedule(store.assignRows,st.assign.y,st.assign.m,user());
-    if(ok) toast(st.assign.y+'년 '+st.assign.m+'월 감독표가 저장되었습니다.');
-    else toast('저장 실패',true);
+  // ── 불러오기 (Sheets → 달력) ──
+  document.getElementById('bLoad').addEventListener('click', async function(){
+    var y = +document.getElementById('as_y').value, m = +document.getElementById('as_m').value;
+    st.assign.y = y; st.assign.m = m;
+    cache.invalidateSchedule(y, m);  // 최신 데이터 강제 로드
+    loading();
+    var saved = await svc.getSchedule(y, m);
+    if (saved.length > 0) {
+      store.assignRows = saved;
+      store.assignDirty = false;
+      toast(y+'년 '+m+'월 배정을 불러왔습니다.');
+    } else {
+      store.assignRows = [];
+      toast('저장된 배정이 없습니다. 자동 배정을 사용하세요.', true);
+    }
+    render();
   });
 
+  // ── 자동 배정 ──
+  document.getElementById('bAuto').addEventListener('click', function(){
+    var y = +document.getElementById('as_y').value, m = +document.getElementById('as_m').value;
+    st.assign.y = y; st.assign.m = m; store.userExcl = [];
+    store.assignRows = autoAssign(y, m);
+    store.assignDirty = true;
+    render();
+  });
+
+  // ── 초기화 ──
+  document.getElementById('bClr').addEventListener('click', function(){
+    store.assignRows = []; store.userExcl = []; store.assignDirty = false; render();
+  });
+
+  // ── 저장 ──
+  document.getElementById('bSave').addEventListener('click', async function(){
+    if (!store.assignRows.length) return;
+    var ok = await svc.saveSchedule(store.assignRows, st.assign.y, st.assign.m, user());
+    if (ok) {
+      store.assignDirty = false;
+      toast(st.assign.y+'년 '+st.assign.m+'월 감독표가 저장되었습니다.');
+      render();  // 저장 후 달력 유지 (버튼의 * 제거)
+    } else {
+      toast('저장 실패', true);
+    }
+  });
+
+  // ── 드롭다운 변경 ──
   document.querySelectorAll('.asel').forEach(function(sel){
-    sel.addEventListener('click',function(e){e.stopPropagation();});
-    sel.addEventListener('mousedown',function(e){e.stopPropagation();});
-    sel.addEventListener('change',function(e){
+    sel.addEventListener('click',    function(e){ e.stopPropagation(); });
+    sel.addEventListener('mousedown',function(e){ e.stopPropagation(); });
+    sel.addEventListener('change',   function(e){
       e.stopPropagation();
-      var r=store.assignRows.find(function(r){return r.date===e.target.dataset.ds;});
-      if(r){r.current=e.target.value;r.type='수동';}
+      var r = store.assignRows.find(function(r){ return r.date === e.target.dataset.ds; });
+      if (r) { r.current = e.target.value; r.type = '수동'; store.assignDirty = true; }
     });
   });
 
-  var ag=document.getElementById('aGr');
-  if(ag) ag.addEventListener('click',function(e){
-    if(e.target.tagName==='SELECT'||e.target.tagName==='OPTION') return;
-    var cell=e.target.closest('[data-ds]'); if(!cell) return;
-    var ds=cell.dataset.ds, r=store.assignRows.find(function(r){return r.date===ds;}); if(!r) return;
-    if(r.status==='제외'){
-      var ab=store.assignRows.filter(function(x){return x.status!=='제외'&&x.date<ds;}).length;
-      var t=TEACHERS[(store.lastIdx+ab)%TEACHERS.length];
-      r.orig=t;r.current=t;r.status='정상';r.type='수동';r.note='';
-      store.userExcl=store.userExcl.filter(function(x){return x!==ds;});
+  // ── 셀 클릭 → 제외/복구 ──
+  var ag = document.getElementById('aGr');
+  if (ag) ag.addEventListener('click', function(e){
+    if (e.target.tagName==='SELECT' || e.target.tagName==='OPTION') return;
+    var cell = e.target.closest('[data-ds]'); if (!cell) return;
+    var ds = cell.dataset.ds;
+    var r  = store.assignRows.find(function(r){ return r.date===ds; });
+    if (!r) return;
+    if (r.status === '제외') {
+      var ab = store.assignRows.filter(function(x){ return x.status!=='제외' && x.date<ds; }).length;
+      var t  = TEACHERS[(store.lastIdx+ab) % TEACHERS.length];
+      r.orig=t; r.current=t; r.status='정상'; r.type='수동'; r.note='';
+      store.userExcl = store.userExcl.filter(function(x){ return x!==ds; });
     } else {
-      r.orig=null;r.current=null;r.status='제외';r.type='자동';r.note='배정제외';
-      if(store.userExcl.indexOf(ds)<0) store.userExcl.push(ds);
+      r.orig=null; r.current=null; r.status='제외'; r.type='자동'; r.note='배정제외';
+      if (store.userExcl.indexOf(ds) < 0) store.userExcl.push(ds);
     }
+    store.assignDirty = true;
     render();
   });
 }
