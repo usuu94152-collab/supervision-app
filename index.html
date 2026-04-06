@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>본교무실 감독표 – 대진고등학교</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: #f5f5f3; color: #1a1a1a; font-size: 14px; margin: 0; }
+  select, input[type=text], textarea { border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; background: #fff; color: #1a1a1a; font-size: 13px; font-family: inherit; }
+  select:focus, input:focus { outline: none; border-color: #185FA5; }
+  .tab-bar { display: flex; background: #fff; border-bottom: 1px solid #e5e7eb; overflow-x: auto; gap: 0; }
+  .tab { padding: 10px 16px; font-size: 13px; cursor: pointer; white-space: nowrap; color: #6b7280; border: none; border-bottom: 2px solid transparent; background: none; transition: color 0.15s; }
+  .tab.active { color: #185FA5; border-bottom: 2px solid #185FA5; font-weight: 600; }
+  .tab:hover:not(.active) { color: #111; background: #f9fafb; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; font-weight: 600; font-size: 11px; color: #6b7280; border-bottom: 1px solid #e5e7eb; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em; }
+  td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f9fafb; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .b-normal  { background: #dcfce7; color: #166534; }
+  .b-changed { background: #fee2e2; color: #991b1b; }
+  .b-excluded{ background: #f3f4f6; color: #6b7280; }
+  .b-auto    { background: #dbeafe; color: #1e40af; }
+  .b-manual  { background: #fef3c7; color: #92400e; }
+  .b-swap    { background: #fce7f3; color: #9d174d; }
+  .b-log     { background: #f3e8ff; color: #6b21a8; }
+  .btn { border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; background: #fff; color: #374151; font-family: inherit; transition: background 0.1s; }
+  .btn:hover { background: #f9fafb; }
+  .btn.primary { background: #185FA5; color: #fff; border-color: #185FA5; }
+  .btn.primary:hover { background: #1e4e8c; }
+  .btn.success { background: #15803d; color: #fff; border-color: #15803d; }
+  .btn.success:hover { background: #166534; }
+  .btn.danger  { background: #b91c1c; color: #fff; border-color: #b91c1c; }
+  .btn.sm { padding: 4px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .info-box { background: #eff6ff; color: #1e40af; border-radius: 6px; padding: 8px 12px; font-size: 12px; margin-bottom: 0.75rem; }
+  .warn-box { background: #fffbeb; color: #92400e; border-radius: 6px; padding: 8px 12px; font-size: 12px; margin-bottom: 0.75rem; border: 1px solid #fde68a; }
+  .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .modal { background: #fff; border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+  .modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 1rem; }
+  .modal-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
+  .modal-row:last-of-type { border-bottom: none; }
+  .modal-label { color: #6b7280; }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem; }
+  .stat-card { background: #f9fafb; border-radius: 8px; padding: 0.875rem 1rem; }
+  .stat-label { font-size: 11px; color: #6b7280; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat-val { font-size: 24px; font-weight: 700; color: #111; }
+  .overflow-x { overflow-x: auto; }
+  .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: #15803d; color: #fff; padding: 10px 20px; border-radius: 999px; font-size: 13px; font-weight: 600; z-index: 200; pointer-events: none; opacity: 0; transition: opacity 0.25s; white-space: nowrap; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+  .toast.show { opacity: 1; }
+  .toast.err  { background: #b91c1c; }
+  .row-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+  .section-title { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+  @media(max-width:600px){
+    .card { padding: 0.875rem; }
+    .row-controls { flex-direction: column; align-items: stretch; }
+    th, td { padding: 6px 8px; font-size: 12px; }
+    .hide-mobile { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── 앱 최상위 ── -->
+<div style="max-width:960px;margin:0 auto;padding-bottom:2rem;">
+
+  <!-- 헤더 -->
+  <div style="background:#fff;border-bottom:1px solid #e5e7eb;padding:0.75rem 1.25rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;">
+    <div>
+      <div style="font-size:15px;font-weight:700;color:#111;">📋 본교무실 감독표</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:1px;">대진고등학교</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span style="font-size:11px;color:#9ca3af;">작업자</span>
+      <select id="currentUser" style="font-size:12px;padding:4px 8px;">
+        <option value="">선택</option>
+        <option>신현주</option><option>이용주</option><option>강성자</option>
+        <option>유성욱</option><option>이다원</option><option>이애정</option><option>최진영</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- 탭 -->
+  <div class="tab-bar" id="tabBar">
+    <button class="tab active" data-tab="schedule">월간 감독표</button>
+    <button class="tab" data-tab="assign">월별 배정</button>
+    <button class="tab" data-tab="swap">교체 관리</button>
+    <button class="tab" data-tab="stats">월별 통계</button>
+    <button class="tab" data-tab="logs">변경 로그</button>
+  </div>
+
+  <!-- 페이지 영역 -->
+  <div id="page" style="padding:1rem;"></div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  상수 & 설정
+// ═══════════════════════════════════════════════════
+const TEACHERS = ['신현주','이용주','강성자','유성욱','이다원','이애정','최진영'];
+const DOW_KR   = ['일','월','화','수','목','금','토'];
+
+// ─ 설정값 (수정 가능) ─
+const CONFIG = {
+  continueFromLastMonth: true,  // true: 전달 마지막 배정자 다음부터 시작
+  skipWeekends: true,           // true: 주말 배정 제외
+};
+
+// ═══════════════════════════════════════════════════
+//  인메모리 Store (Mock 레이어)
+//  → 추후 이 부분만 Google Sheets API 호출로 교체
+// ═══════════════════════════════════════════════════
+const store = {
+  schedule: [],
+  logs: [],
+  holidays: [
+    { date:'2026-04-14', type:'공휴일',   desc:'임시공휴일',    assign:'N' },
+    { date:'2026-04-21', type:'시험기간', desc:'중간고사 1일',  assign:'N' },
+    { date:'2026-04-22', type:'시험기간', desc:'중간고사 2일',  assign:'N' },
+    { date:'2026-04-23', type:'시험기간', desc:'중간고사 3일',  assign:'N' },
+    { date:'2026-05-05', type:'공휴일',   desc:'어린이날',      assign:'N' },
+    { date:'2026-06-06', type:'공휴일',   desc:'현충일',        assign:'N' },
+  ],
+  lastAssignIdx: 0,
+};
+
+// ═══════════════════════════════════════════════════
+//  유틸
+// ═══════════════════════════════════════════════════
+const daysInMonth = (y,m) => new Date(y,m,0).getDate();
+const dowName = (y,m,d) => DOW_KR[new Date(y,m-1,d).getDay()];
+const isWeekend = (y,m,d) => { const w=new Date(y,m-1,d).getDay(); return w===0||w===6; };
+const fmtDate = (y,m,d) => `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+const nowStr = () => new Date().toLocaleString('ko-KR');
+const getUser = () => document.getElementById('currentUser')?.value || '미지정';
+const isBlocked = ds => store.holidays.some(h=>h.date===ds&&h.assign==='N');
+
+// ═══════════════════════════════════════════════════
+//  자동 배정 로직 (라운드로빈)
+// ═══════════════════════════════════════════════════
+function autoAssign(year, month, startIdx=0) {
+  const total = daysInMonth(year, month);
+  const rows  = [];
+  let idx = startIdx;
+
+  for (let d=1; d<=total; d++) {
+    const ds  = fmtDate(year,month,d);
+    const dow = dowName(year,month,d);
+    const h   = store.holidays.find(h=>h.date===ds);
+    const excl= (CONFIG.skipWeekends && isWeekend(year,month,d)) || isBlocked(ds);
+
+    if (excl) {
+      rows.push({ date:ds, year, month, day:d, dow,
+        orig:null, current:null, status:'제외', type:'자동',
+        note: isWeekend(year,month,d)?'주말':(h?.desc||'배정제외') });
+    } else {
+      const teacher = TEACHERS[idx % TEACHERS.length];
+      idx++;
+      rows.push({ date:ds, year, month, day:d, dow,
+        orig:teacher, current:teacher, status:'정상', type:'자동', note:'' });
+    }
+  }
+  if (CONFIG.continueFromLastMonth) store.lastAssignIdx = idx % TEACHERS.length;
+  return rows;
+}
+
+// ═══════════════════════════════════════════════════
+//  서비스 함수 (교체 가능 레이어)
+// ═══════════════════════════════════════════════════
+const svc = {
+  getSchedule: (y,m) => store.schedule.filter(r=>r.year===y&&r.month===m),
+
+  saveSchedule(rows, y, m, user) {
+    store.schedule = store.schedule.filter(r=>!(r.year===y&&r.month===m));
+    store.schedule.push(...rows);
+    store.logs.unshift({ time:nowStr(), type:'월배정',
+      target:`${y}-${String(m).padStart(2,'0')}`,
+      prev:'', next:'배정완료', user, reason:'자동배정 저장' });
+  },
+
+  swapTeacher(ds, newT, reason, user) {
+    const row = store.schedule.find(r=>r.date===ds);
+    if (!row)              return { ok:false, msg:'해당 날짜 데이터가 없습니다.' };
+    if (row.status==='제외') return { ok:false, msg:'해당 날짜는 교체할 수 없습니다.' };
+    if (row.current===newT)  return { ok:false, msg:'현재 감독자와 동일한 이름은 선택할 수 없습니다.' };
+    const prev = row.current;
+    row.current = newT; row.status='변경'; row.type='교체';
+    store.logs.unshift({ time:nowStr(), type:'교체',
+      target:ds, prev, next:newT, user, reason });
+    return { ok:true };
+  },
+
+  getStats(y,m) {
+    const rows = store.schedule.filter(r=>r.year===y&&r.month===m&&r.status!=='제외');
+    const s = {};
+    TEACHERS.forEach(t=>{ s[t]={name:t,origCount:0,currCount:0,removed:0,added:0}; });
+    rows.forEach(r=>{
+      if(r.orig)    s[r.orig].origCount++;
+      if(r.current) s[r.current].currCount++;
+      if(r.orig&&r.current&&r.orig!==r.current){
+        s[r.orig].removed++; s[r.current].added++;
+      }
+    });
+    return Object.values(s);
+  }
+};
+
+// ═══════════════════════════════════════════════════
+//  Toast
+// ═══════════════════════════════════════════════════
+let _tt;
+function toast(msg, err=false) {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='toast show'+(err?' err':'');
+  clearTimeout(_tt); _tt=setTimeout(()=>el.className='toast',2800);
+}
+
+// ═══════════════════════════════════════════════════
+//  Modal
+// ═══════════════════════════════════════════════════
+function modal(html, onOk, onCancel) {
+  const root=document.getElementById('modalRoot');
+  root.innerHTML=`<div class="modal-overlay" id="ov">${html}</div>`;
+  root.querySelector('#mOk')?.addEventListener('click',()=>{ root.innerHTML=''; onOk&&onOk(); });
+  root.querySelector('#mCancel')?.addEventListener('click',()=>{ root.innerHTML=''; onCancel&&onCancel(); });
+  root.querySelector('#ov')?.addEventListener('click',e=>{ if(e.target.id==='ov'){ root.innerHTML=''; onCancel&&onCancel(); } });
+}
+
+// ═══════════════════════════════════════════════════
+//  탭 라우팅
+// ═══════════════════════════════════════════════════
+let activeTab='schedule';
+const st = {
+  schedule: {y:2026,m:4},
+  assign:   {y:2026,m:4,rows:[],dirty:false},
+  swap:     {y:2026,m:4,ds:'',newT:'',reason:''},
+  stats:    {y:2026,m:4},
+};
+
+document.getElementById('tabBar').addEventListener('click',e=>{
+  const t=e.target.closest('[data-tab]'); if(!t)return;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); activeTab=t.dataset.tab; render();
+});
+
+const render = ()=>({schedule:pageSchedule,assign:pageAssign,swap:pageSwap,stats:pageStats,logs:pageLogs}[activeTab])();
+
+// ═══════════════════════════════════════════════════
+//  PAGE 1: 월간 감독표
+// ═══════════════════════════════════════════════════
+function pageSchedule() {
+  const s=st.schedule, rows=svc.getSchedule(s.y,s.m);
+  document.getElementById('page').innerHTML=`
+  <div class="card">
+    <div class="row-controls">
+      ${yearSel('sc_y',s.y)} ${monSel('sc_m',s.m)}
+      <button class="btn sm" onclick="st.schedule.y=+sc_y.value;st.schedule.m=+sc_m.value;render()">조회</button>
+    </div>
+    ${rows.length===0
+      ? `<div class="info-box">📌 해당 월 데이터가 없습니다. <b>[월별 배정]</b> 탭에서 먼저 배정을 생성해주세요.</div>`
+      : `<div class="overflow-x"><table>
+          <thead><tr>
+            <th>날짜</th><th>요일</th><th>원래 감독</th><th>현재 감독</th><th>상태</th>
+            <th class="hide-mobile">구분</th><th class="hide-mobile">비고</th>
+          </tr></thead>
+          <tbody>${rows.map(r=>`
+          <tr style="${r.status==='제외'?'opacity:0.4':r.status==='변경'?'background:#fffbeb':''}">
+            <td style="font-variant-numeric:tabular-nums;font-size:12px">${r.date}</td>
+            <td style="font-weight:600;${r.dow==='토'?'color:#1d4ed8':r.dow==='일'?'color:#b91c1c':''}">${r.dow}</td>
+            <td>${r.orig||'–'}</td>
+            <td style="${r.status==='변경'?'color:#1d4ed8;font-weight:700':''}">${r.current||'–'}</td>
+            <td><span class="badge b-${r.status==='정상'?'normal':r.status==='변경'?'changed':'excluded'}">${r.status}</span></td>
+            <td class="hide-mobile">${r.type?`<span class="badge b-${r.type==='자동'?'auto':r.type==='수동'?'manual':'swap'}">${r.type}</span>`:''}</td>
+            <td class="hide-mobile" style="color:#9ca3af;font-size:11px">${r.note||''}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  PAGE 2: 월별 배정
+// ═══════════════════════════════════════════════════
+function pageAssign() {
+  const s=st.assign;
+  document.getElementById('page').innerHTML=`
+  <div class="card">
+    <div class="row-controls">
+      ${yearSel('as_y',s.y)} ${monSel('as_m',s.m)}
+      <button class="btn sm primary" id="btnAuto">자동 배정</button>
+      <button class="btn sm" id="btnClear">초기화</button>
+      <button class="btn sm success" id="btnSave" ${!s.rows.length?'disabled':''}>저장 → Sheets</button>
+    </div>
+    <div class="info-box">💡 주말·제외일을 건너뛰고 <b>순환 배정</b>합니다. 저장 후 개별 수정 가능합니다.</div>
+    ${!s.rows.length
+      ? `<div class="warn-box">연도·월 선택 후 <b>[자동 배정]</b>을 눌러주세요.</div>`
+      : `<div class="overflow-x"><table>
+          <thead><tr><th>날짜</th><th>요일</th><th>상태</th><th>감독자</th><th class="hide-mobile">비고</th></tr></thead>
+          <tbody>${s.rows.map((r,i)=>`
+          <tr style="${r.status==='제외'?'opacity:0.4':''}">
+            <td style="font-size:12px">${r.date}</td>
+            <td style="font-weight:600;${r.dow==='토'?'color:#1d4ed8':r.dow==='일'?'color:#b91c1c':''}">${r.dow}</td>
+            <td><span class="badge b-${r.status==='정상'?'normal':'excluded'}">${r.status}</span></td>
+            <td>${r.status==='제외'?'<span style="color:#9ca3af">–</span>'
+              :`<select data-i="${i}" class="ts" style="font-size:12px;padding:3px 6px">${TEACHERS.map(t=>`<option ${t===r.current?'selected':''}>${t}</option>`).join('')}</select>`}</td>
+            <td class="hide-mobile" style="color:#9ca3af;font-size:11px">${r.note||''}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`}
+  </div>`;
+
+  document.getElementById('btnAuto')?.addEventListener('click',()=>{
+    const y=+document.getElementById('as_y').value, m=+document.getElementById('as_m').value;
+    st.assign.y=y; st.assign.m=m;
+    st.assign.rows=autoAssign(y,m, CONFIG.continueFromLastMonth?store.lastAssignIdx:0);
+    render();
+  });
+  document.getElementById('btnClear')?.addEventListener('click',()=>{ st.assign.rows=[]; render(); });
+  document.getElementById('btnSave')?.addEventListener('click',()=>{
+    if(!st.assign.rows.length) return;
+    svc.saveSchedule(st.assign.rows,st.assign.y,st.assign.m,getUser());
+    toast(`${st.assign.y}년 ${st.assign.m}월 감독표가 저장되었습니다.`);
+  });
+  document.querySelectorAll('.ts').forEach(sel=>{
+    sel.addEventListener('change',e=>{
+      const i=+e.target.dataset.i;
+      st.assign.rows[i].current=e.target.value;
+      st.assign.rows[i].type='수동';
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  PAGE 3: 교체 관리
+// ═══════════════════════════════════════════════════
+function pageSwap() {
+  const s=st.swap;
+  const rows=svc.getSchedule(s.y,s.m).filter(r=>r.status!=='제외');
+  const selRow=rows.find(r=>r.date===s.ds);
+  const curT=selRow?.current||'';
+
+  document.getElementById('page').innerHTML=`
+  <div class="card">
+    <div class="section-title">교체 날짜 선택</div>
+    <div class="row-controls">
+      ${yearSel('sw_y',s.y)} ${monSel('sw_m',s.m)}
+      <select id="sw_date" style="min-width:180px">
+        <option value="">날짜 선택</option>
+        ${rows.map(r=>`<option value="${r.date}" ${r.date===s.ds?'selected':''}>${r.date} (${r.dow}) · ${r.current}</option>`).join('')}
+      </select>
+    </div>
+    ${rows.length===0?`<div class="warn-box">해당 월 데이터가 없습니다. 먼저 [월별 배정]에서 배정을 생성하세요.</div>`:''}
+    ${selRow?`
+    <div style="background:#f9fafb;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;display:flex;gap:1.5rem;flex-wrap:wrap;font-size:13px">
+      <div><span style="color:#9ca3af">날짜</span> <b>${s.ds} (${selRow.dow})</b></div>
+      <div><span style="color:#9ca3af">현재 감독</span> <b>${curT}</b></div>
+      <div><span class="badge b-${selRow.status==='정상'?'normal':'changed'}">${selRow.status}</span></div>
+    </div>
+    <div class="section-title">변경 정보 입력</div>
+    <div class="row-controls">
+      <select id="sw_new" style="min-width:130px">
+        <option value="">변경할 감독자 선택</option>
+        ${TEACHERS.filter(t=>t!==curT).map(t=>`<option ${t===s.newT?'selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="row-controls">
+      <input type="text" id="sw_reason" placeholder="교체 사유 (선택)" style="flex:1;min-width:200px" value="${s.reason||''}">
+    </div>
+    <button class="btn primary" id="btnSwap">교체 신청</button>
+    `:''}
+  </div>`;
+
+  document.getElementById('sw_y')?.addEventListener('change',e=>{ s.y=+e.target.value; s.ds=''; s.newT=''; render(); });
+  document.getElementById('sw_m')?.addEventListener('change',e=>{ s.m=+e.target.value; s.ds=''; s.newT=''; render(); });
+  document.getElementById('sw_date')?.addEventListener('change',e=>{ s.ds=e.target.value; s.newT=''; s.reason=''; render(); });
+  document.getElementById('sw_new')?.addEventListener('change',e=>s.newT=e.target.value);
+  document.getElementById('sw_reason')?.addEventListener('input',e=>s.reason=e.target.value);
+  document.getElementById('btnSwap')?.addEventListener('click',()=>{
+    if(!s.newT){ toast('변경할 감독자를 선택해주세요.',true); return; }
+    modal(`<div class="modal">
+      <h3>🔄 감독자 교체 확인</h3>
+      <div class="modal-row"><span class="modal-label">날짜</span><span>${s.ds} (${selRow.dow})</span></div>
+      <div class="modal-row"><span class="modal-label">기존 감독자</span><span>${curT}</span></div>
+      <div class="modal-row"><span class="modal-label">변경 감독자</span><span style="color:#185FA5;font-weight:700">${s.newT}</span></div>
+      <div class="modal-row"><span class="modal-label">사유</span><span>${s.reason||'(없음)'}</span></div>
+      <p style="font-size:13px;margin-top:1rem;color:#6b7280">위 내용으로 감독자를 변경하시겠습니까?</p>
+      <div class="modal-btns">
+        <button class="btn" id="mCancel">취소</button>
+        <button class="btn primary" id="mOk">확인</button>
+      </div>
+    </div>`,()=>{
+      const res=svc.swapTeacher(s.ds,s.newT,s.reason,getUser());
+      if(res.ok){
+        toast('감독 변경이 완료되었습니다. 변경 내용이 기록되었습니다.');
+        s.ds=''; s.newT=''; s.reason=''; render();
+      } else toast(res.msg,true);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  PAGE 4: 월별 통계
+// ═══════════════════════════════════════════════════
+function pageStats() {
+  const s=st.stats;
+  const rows=svc.getSchedule(s.y,s.m).filter(r=>r.status!=='제외');
+  const stats=svc.getStats(s.y,s.m);
+
+  document.getElementById('page').innerHTML=`
+  <div class="card">
+    <div class="row-controls">
+      ${yearSel('st_y',s.y)} ${monSel('st_m',s.m)}
+      <button class="btn sm" onclick="st.stats.y=+st_y.value;st.stats.m=+st_m.value;render()">조회</button>
+    </div>
+    ${rows.length===0?`<div class="info-box">해당 월 데이터가 없습니다.</div>`:`
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:1.25rem">
+      <div class="stat-card"><div class="stat-label">총 배정 일수</div><div class="stat-val">${rows.length}일</div></div>
+      <div class="stat-card"><div class="stat-label">교체 발생</div><div class="stat-val">${rows.filter(r=>r.status==='변경').length}건</div></div>
+      <div class="stat-card"><div class="stat-label">감독 인원</div><div class="stat-val">${TEACHERS.length}명</div></div>
+    </div>
+    <div class="overflow-x"><table>
+      <thead><tr>
+        <th>이름</th><th>원래 배정</th><th>현재 배정</th>
+        <th>빠진 횟수</th><th>추가 횟수</th><th>차이</th>
+      </tr></thead>
+      <tbody>${stats.map(r=>{
+        const diff=r.currCount-r.origCount;
+        return `<tr>
+          <td style="font-weight:700">${r.name}</td>
+          <td>${r.origCount}</td>
+          <td style="font-weight:600">${r.currCount}</td>
+          <td style="color:${r.removed?'#b91c1c':'#9ca3af'}">${r.removed}</td>
+          <td style="color:${r.added?'#15803d':'#9ca3af'}">${r.added}</td>
+          <td style="font-weight:700;color:${diff>0?'#15803d':diff<0?'#b91c1c':'#9ca3af'}">${diff>0?'+':''}${diff}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  PAGE 5: 변경 로그
+// ═══════════════════════════════════════════════════
+function pageLogs() {
+  const logs=store.logs;
+  document.getElementById('page').innerHTML=`
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.875rem">
+      <div style="font-weight:700;font-size:14px">변경 이력</div>
+      <span style="font-size:11px;color:#9ca3af">총 ${logs.length}건</span>
+    </div>
+    ${logs.length===0?`<div class="info-box">변경 이력이 없습니다.</div>`:`
+    <div class="overflow-x"><table>
+      <thead><tr>
+        <th>변경시간</th><th>유형</th><th>대상</th>
+        <th class="hide-mobile">이전값</th><th>새값</th>
+        <th class="hide-mobile">작업자</th><th class="hide-mobile">사유</th>
+      </tr></thead>
+      <tbody>${logs.map(l=>`<tr>
+        <td style="font-size:11px;white-space:nowrap;color:#6b7280">${l.time}</td>
+        <td><span class="badge b-${l.type==='교체'?'swap':l.type==='월배정'?'auto':'manual'}">${l.type}</span></td>
+        <td style="font-size:12px">${l.target}</td>
+        <td class="hide-mobile" style="color:#9ca3af">${l.prev||'–'}</td>
+        <td style="font-weight:600">${l.next}</td>
+        <td class="hide-mobile" style="font-size:12px">${l.user}</td>
+        <td class="hide-mobile" style="color:#9ca3af;font-size:12px">${l.reason||'–'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  공통 셀렉트 생성 함수
+// ═══════════════════════════════════════════════════
+function yearSel(id,sel) {
+  return `<select id="${id}" style="width:88px">${[2025,2026,2027].map(y=>`<option ${y===sel?'selected':''}>${y}</option>`).join('')}</select>`;
+}
+function monSel(id,sel) {
+  return `<select id="${id}" style="width:68px">${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===sel?'selected':''}>${i+1}월</option>`).join('')}</select>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  초기 렌더
+// ═══════════════════════════════════════════════════
+render();
+</script>
+</body>
+</html>
