@@ -156,6 +156,28 @@ var store = {
 var unlocked = false;
 var cbIdx = 0;
 
+// ── 인메모리 캐시 ─────────────────────────────────────────
+// GAS 응답을 캐싱해서 같은 데이터 재요청 방지
+var cache = {
+  schedule: {},   // key: "2026-4" → rows 배열
+  logs: null,
+  holidays: null,
+
+  schedKey: function(y,m){ return y+'-'+m; },
+
+  getSchedule: function(y,m){
+    return this.schedule[this.schedKey(y,m)] || null;
+  },
+  setSchedule: function(y,m,rows){
+    this.schedule[this.schedKey(y,m)] = rows;
+  },
+  // 저장/교체 후 해당 월 캐시 무효화
+  invalidateSchedule: function(y,m){
+    delete this.schedule[this.schedKey(y,m)];
+    this.logs = null;  // 로그도 함께 무효화
+  }
+};
+
 // ── JSONP 호출 ────────────────────────────────────────────
 function gas(action, params) {
   return new Promise(function(resolve) {
@@ -213,9 +235,13 @@ function normDate(v) {
 // ── 서비스 ────────────────────────────────────────────────
 var svc = {
   async getSchedule(y, m) {
-    var raw = await gas('getSchedule');
+    // 캐시 확인
+    var cached = cache.getSchedule(y, m);
+    if (cached) return cached;
+
+    var raw = await gas('getSchedule', {year:y, month:m});
     if (!Array.isArray(raw)) return [];
-    return raw.map(function(r) {
+    var rows = raw.map(function(r) {
       var ds = normDate(r['날짜']);
       var pts = ds.split('-');
       return {
@@ -224,26 +250,44 @@ var svc = {
         status: String(r['상태']||''), type: String(r['배정구분']||''), note: String(r['비고']||'')
       };
     }).filter(function(r){ return r.year===y && r.month===m; });
+
+    cache.setSchedule(y, m, rows);  // 캐시 저장
+    return rows;
   },
 
   async saveSchedule(rows, y, m, u) {
     toast('저장 중... (잠시 기다려주세요)');
+
+    // 1) 해당 월 삭제
     var clr = await gas('clearMonth', {year:y, month:m});
     if (!clr || !clr.ok) { toast('초기화 실패', true); return false; }
-    for (var i=0; i<rows.length; i++) {
-      var res = await gas('saveRow', {row: rows[i]});
-      if (!res || !res.ok) { toast('저장 실패 ('+i+'번째 행)', true); return false; }
+
+    // 2) 10행씩 청크로 나눠서 저장 (URL 길이 제한 & 속도 균형)
+    var CHUNK = 10;
+    for (var i=0; i<rows.length; i+=CHUNK) {
+      var chunk = rows.slice(i, i+CHUNK);
+      var res = await gas('saveRows', {rows: chunk});
+      if (!res || !res.ok) { toast('저장 실패', true); return false; }
     }
+
+    // 3) 로그
     await gas('appendLog', {type:'월배정', target:y+'-'+p2(m), prev:'', next:'배정완료', user:u, reason:'달력 배정 저장'});
+    cache.invalidateSchedule(y, m);  // 캐시 무효화
     return true;
   },
 
   async swapByDate(dA, dB, reason, u) {
     var res = await gas('swapByDate', {dateA:dA, dateB:dB, reason:reason, user:u});
+    if (res && res.ok) {
+      // 날짜에서 연/월 추출해서 캐시 무효화
+      var pts = dA.split('-');
+      cache.invalidateSchedule(+pts[0], +pts[1]);
+    }
     return res || {ok:false, msg:'응답 없음'};
   },
 
   async getLogs() {
+    if (cache.logs) return cache.logs;
     var raw = await gas('getLogs');
     if (!Array.isArray(raw)) return [];
     return raw.map(function(r){
@@ -254,6 +298,8 @@ var svc = {
         reason: String(r['사유']||'')
       };
     });
+    cache.logs = rows2;
+    return rows2;
   },
 
   async loadHolidays() {
@@ -604,8 +650,15 @@ async function P5(){
     +'</div>';
 }
 
-// ── 초기 실행 ─────────────────────────────────────────────
-svc.loadHolidays().then(function(){ render(); });
+// ── 초기 실행: 제외일 로드 후 현재 월 데이터 미리 로드 ──────
+svc.loadHolidays().then(function(){
+  render();
+  // 백그라운드에서 현재 탭 데이터 미리 캐싱
+  var now = new Date();
+  var y = st.schedule.y, m = st.schedule.m;
+  svc.getSchedule(y, m);   // 백그라운드 프리페치
+  svc.getLogs();            // 로그도 미리 로드
+});
 </script>
 </body>
 </html>
