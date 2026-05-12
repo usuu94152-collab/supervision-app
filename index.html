@@ -361,7 +361,8 @@ function loading(){ document.getElementById('page').innerHTML='<div class="loadi
 
 // ── 탭 라우터 ─────────────────────────────────────────────
 var tab='schedule';
-var st={schedule:{y:2026,m:4},assign:{y:2026,m:4},swap:{y:2026,m:4,selA:null,selB:null},stats:{y:2026,m:4}};
+var _now=new Date(), _ny=_now.getFullYear(), _nm=_now.getMonth()+1;
+var st={schedule:{y:_ny,m:_nm},assign:{y:_ny,m:_nm},swap:{y:_ny,m:_nm,selA:null,selB:null},stats:{y:_ny,m:_nm}};
 
 document.getElementById('tabBar').addEventListener('click',function(e){
   var t=e.target.closest('[data-tab]'); if(!t) return;
