@@ -263,7 +263,7 @@ var svc = {
     if (!clr || !clr.ok) { toast('초기화 실패', true); return false; }
 
     // 2) 10행씩 청크로 나눠서 저장 (URL 길이 제한 & 속도 균형)
-    var CHUNK = 10;
+    var CHUNK = 3;
     for (var i=0; i<rows.length; i+=CHUNK) {
       var chunk = rows.slice(i, i+CHUNK);
       var res = await gas('saveRows', {rows: chunk});
