@@ -135,8 +135,13 @@ tr:hover td{background:#f9fafb;}
 <script>
 var GAS = 'https://script.google.com/macros/s/AKfycbxCtkcYnh1MKB0LWjfye2M7XrTVYHyl0uFUaAMpRk6Mdw6BjJuWZDDoOHNiCcKObyUiCw/exec';
 
-function getPW(){ return localStorage.getItem('spv_pw') || '1234'; }
+// 관리자 토큰: 이 기기에 저장된 값. 서버(GAS) 스크립트 속성 WRITE_TOKEN 과 일치해야 쓰기 가능.
+// 기본값을 비워 두어, 잠금 해제(서버 검증) 전에는 유효한 토큰이 전송되지 않도록 한다.
+function getPW(){ return localStorage.getItem('spv_pw') || ''; }
 function setPW(v){ localStorage.setItem('spv_pw', v); }
+
+// 토큰 검증이 필요한 쓰기 동작 목록 (gas() 에서 자동으로 &token= 부착)
+var WRITE_ACTIONS = { clearMonth:1, saveRows:1, swapByDate:1, appendLog:1 };
 
 var TEACHERS = ['신현주','이용주','강성자','유성욱','이다원','이애정','최진영'];
 var DOW      = ['일','월','화','수','목','금','토'];
@@ -198,6 +203,7 @@ function gas(action, params) {
     };
 
     var url = GAS + '?callback=' + name + '&action=' + encodeURIComponent(action);
+    if (WRITE_ACTIONS[action]) url += '&token=' + encodeURIComponent(getPW());  // 쓰기 동작에 토큰 부착
     if (params) {
       Object.keys(params).forEach(function(k) {
         var v = params[k];
@@ -260,14 +266,20 @@ var svc = {
 
     // 1) 해당 월 삭제
     var clr = await gas('clearMonth', {year:y, month:m});
-    if (!clr || !clr.ok) { toast('초기화 실패', true); return false; }
+    if (!clr || !clr.ok) {
+      toast(clr && clr.error==='unauthorized' ? '인증 실패: 관리자 토큰이 올바르지 않습니다.' : '초기화 실패', true);
+      return false;
+    }
 
-    // 2) 10행씩 청크로 나눠서 저장 (URL 길이 제한 & 속도 균형)
+    // 2) 3행씩 청크로 나눠서 저장 (URL 길이 제한 & 속도 균형)
     var CHUNK = 3;
     for (var i=0; i<rows.length; i+=CHUNK) {
       var chunk = rows.slice(i, i+CHUNK);
       var res = await gas('saveRows', {rows: chunk});
-      if (!res || !res.ok) { toast('저장 실패', true); return false; }
+      if (!res || !res.ok) {
+        toast(res && res.error==='unauthorized' ? '인증 실패: 관리자 토큰이 올바르지 않습니다.' : '저장 실패', true);
+        return false;
+      }
     }
 
     // 3) 로그
@@ -383,12 +395,21 @@ function lockModal(){
   var inp=root.querySelector('#pi'), err=root.querySelector('#pe');
   root.querySelector('#tp').addEventListener('click',function(){inp.type=inp.type==='password'?'text':'password';});
   setTimeout(function(){inp.focus();},80);
-  function tryUnlock(){
-    if(inp.value===getPW()){
+  async function tryUnlock(){
+    var pw = inp.value;
+    if(!pw){ err.textContent='비밀번호를 입력해주세요.'; return; }
+    err.style.color='#6b7280'; err.textContent='확인 중...';
+    // 서버(GAS)에 토큰을 검증 — 클라이언트 단독 비교가 아니라 서버가 승인해야 통과
+    var res = await gas('verifyToken', { token: pw });
+    err.style.color='#b91c1c';
+    if(res && res.ok){
+      setPW(pw);  // 서버 검증을 통과한 토큰만 저장
       unlocked=true; root.innerHTML='';
       document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
       document.querySelector('[data-tab="assign"]').classList.add('active');
       tab='assign'; render();
+    } else if(res===null){
+      err.textContent='서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.';
     } else { err.textContent='비밀번호가 올바르지 않습니다.'; inp.value=''; inp.focus(); }
   }
   inp.addEventListener('keydown',function(e){if(e.key==='Enter')tryUnlock();});
@@ -513,15 +534,21 @@ async function P2(){
   // ── 비밀번호 변경 ──
   document.getElementById('bCpw').addEventListener('click', function(){
     var root = document.getElementById('modalRoot');
-    root.innerHTML = '<div class="modal-overlay" id="ov"><div class="modal" style="max-width:360px"><h3>&#128273; 비밀번호 변경</h3><div style="display:flex;flex-direction:column;gap:10px;"><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">현재 비밀번호</div><input type="password" id="c1" style="width:100%"></div><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">새 비밀번호</div><input type="password" id="c2" style="width:100%"></div><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">새 비밀번호 확인</div><input type="password" id="c3" style="width:100%"></div></div><div id="ce" style="color:#b91c1c;font-size:12px;margin-top:.5rem;min-height:18px;"></div><div class="modal-btns"><button class="btn ghost" id="mCancel">취소</button><button class="btn primary" id="mOk">변경</button></div></div></div>';
+    root.innerHTML = '<div class="modal-overlay" id="ov"><div class="modal" style="max-width:360px"><h3>&#128273; 관리자 토큰 변경</h3><div style="font-size:11px;color:#6b7280;margin:-.5rem 0 .75rem;line-height:1.5">서버(스크립트 속성)의 <b>WRITE_TOKEN</b>을 먼저 바꾼 뒤, 같은 값을 아래에 입력해 이 기기에 동기화하세요.</div><div style="display:flex;flex-direction:column;gap:10px;"><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">현재 비밀번호</div><input type="password" id="c1" style="width:100%"></div><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">새 비밀번호</div><input type="password" id="c2" style="width:100%"></div><div><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">새 비밀번호 확인</div><input type="password" id="c3" style="width:100%"></div></div><div id="ce" style="color:#b91c1c;font-size:12px;margin-top:.5rem;min-height:18px;"></div><div class="modal-btns"><button class="btn ghost" id="mCancel">취소</button><button class="btn primary" id="mOk">변경</button></div></div></div>';
     root.querySelector('#mCancel').addEventListener('click', function(){ root.innerHTML=''; });
     root.querySelector('#ov').addEventListener('click', function(e){ if(e.target.id==='ov') root.innerHTML=''; });
-    root.querySelector('#mOk').addEventListener('click', function(){
+    root.querySelector('#mOk').addEventListener('click', async function(){
       var cur=root.querySelector('#c1').value, nw=root.querySelector('#c2').value, cf=root.querySelector('#c3').value, er=root.querySelector('#ce');
       if(cur!==getPW()){ er.textContent='현재 비밀번호가 틀렸습니다.'; return; }
       if(!nw||nw.length<4){ er.textContent='4자 이상 입력해주세요.'; return; }
       if(nw!==cf){ er.textContent='새 비밀번호가 일치하지 않습니다.'; return; }
-      setPW(nw); root.innerHTML=''; toast('비밀번호가 변경되었습니다.');
+      // 서버 토큰(WRITE_TOKEN)을 먼저 바꾼 뒤, 이 기기 토큰을 거기에 맞춰 동기화한다.
+      er.style.color='#6b7280'; er.textContent='서버 토큰과 대조 중...';
+      var res=await gas('verifyToken', { token: nw });
+      er.style.color='#b91c1c';
+      if(!res){ er.textContent='서버에 연결할 수 없습니다.'; return; }
+      if(!res.ok){ er.textContent='서버의 토큰(WRITE_TOKEN)과 일치하지 않습니다. 먼저 스크립트 속성을 변경하세요.'; return; }
+      setPW(nw); root.innerHTML=''; toast('이 기기의 관리자 토큰이 갱신되었습니다.');
     });
   });
 
