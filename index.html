@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>본교무실 감독표 – 대진고등학교</title>
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
 *{box-sizing:border-box;}
 body{font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;background:#f5f5f3;color:#1a1a1a;font-size:14px;margin:0;}
@@ -115,7 +114,7 @@ tr:hover td{background:#f9fafb;}
       <span style="font-size:11px;color:#9ca3af;">작업자</span>
       <select id="currentUser" style="font-size:12px;padding:4px 8px;">
         <option value="">선택</option>
-        <option>신현주</option><option>이용주</option><option>강성자</option>
+        <option>손영태</option><option>이용주</option><option>강성자</option>
         <option>유성욱</option><option>이다원</option><option>이애정</option><option>최진영</option>
       </select>
     </div>
@@ -143,9 +142,10 @@ function setPW(v){ localStorage.setItem('spv_pw', v); }
 // 토큰 검증이 필요한 쓰기 동작 목록 (gas() 에서 자동으로 &token= 부착)
 var WRITE_ACTIONS = { clearMonth:1, saveRows:1, swapByDate:1, appendLog:1 };
 
-var TEACHERS = ['신현주','이용주','강성자','유성욱','이다원','이애정','최진영'];
+var TEACHERS = ['손영태','이용주','강성자','유성욱','이다원','이애정','최진영'];
 var DOW      = ['일','월','화','수','목','금','토'];
 var CFG      = { skipWeekends: true, continueFromLastMonth: true };
+var saveInProgress = false;
 
 var store = {
   assignRows: [], userExcl: [], lastIdx: 0, assignDirty: false,
@@ -187,20 +187,21 @@ var cache = {
 function gas(action, params) {
   return new Promise(function(resolve) {
     var name = '_cb' + (++cbIdx);
-    var tid = setTimeout(function(){
+    var script = null, settled = false;
+    var cleanup = function(){
+      if (script && script.parentNode) script.parentNode.removeChild(script);
       delete window[name];
-      var el = document.getElementById(name);
-      if (el) el.parentNode.removeChild(el);
-      resolve(null);
-    }, 60000);
-
-    window[name] = function(data) {
+    };
+    var finish = function(data){
+      if (settled) return;
+      settled = true;
       clearTimeout(tid);
-      delete window[name];
-      var el = document.getElementById(name);
-      if (el) el.parentNode.removeChild(el);
+      cleanup();
       resolve(data);
     };
+    var tid = setTimeout(function(){ finish(null); }, 60000);
+
+    window[name] = finish;
 
     var url = GAS + '?callback=' + name + '&action=' + encodeURIComponent(action);
     if (WRITE_ACTIONS[action]) url += '&token=' + encodeURIComponent(getPW());  // 쓰기 동작에 토큰 부착
@@ -211,11 +212,12 @@ function gas(action, params) {
       });
     }
 
-    var s = document.createElement('script');
-    s.id = name;
-    s.src = url;
-    s.onerror = function() { clearTimeout(tid); delete window[name]; resolve(null); };
-    document.head.appendChild(s);
+    script = document.createElement('script');
+    script.id = name;
+    script.src = url;
+    script.onerror = function() { finish(null); };
+    try { document.head.appendChild(script); }
+    catch (e) { finish(null); }
   });
 }
 
@@ -229,6 +231,12 @@ function p2(n)       { return String(n).padStart(2,'0'); }
 function user()      { return document.getElementById('currentUser').value || '미지정'; }
 function isHol(ds)   { return store.holidays.some(function(h){ return h.date===ds && h.assign==='N'; }); }
 function holNote(ds) { var h=store.holidays.find(function(h){ return h.date===ds; }); return h ? h.desc : ''; }
+function esc(v) {
+  return String(v==null?'':v).replace(/[&<>"']/g, function(ch){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+  });
+}
+function copyRows(rows) { return rows.map(function(r){ return Object.assign({}, r); }); }
 
 // 날짜 정규화: ISO든 문자열이든 yyyy-MM-dd 로
 function normDate(v) {
@@ -243,7 +251,7 @@ var svc = {
   async getSchedule(y, m) {
     // 캐시 확인
     var cached = cache.getSchedule(y, m);
-    if (cached) return cached;
+    if (cached) return copyRows(cached);
 
     var raw = await gas('getSchedule', {year:y, month:m});
     if (!Array.isArray(raw)) return [];
@@ -258,7 +266,7 @@ var svc = {
     }).filter(function(r){ return r.year===y && r.month===m; });
 
     cache.setSchedule(y, m, rows);  // 캐시 저장
-    return rows;
+    return copyRows(rows);
   },
 
   async saveSchedule(rows, y, m, u) {
@@ -301,8 +309,8 @@ var svc = {
   async getLogs() {
     if (cache.logs) return cache.logs;
     var raw = await gas('getLogs');
-    if (!Array.isArray(raw)) return [];
-    return raw.map(function(r){
+    if (!Array.isArray(raw)) { cache.logs = []; return cache.logs; }
+    var rows2 = raw.map(function(r){
       return {
         time:   String(r['변경시간']||''),    type:   String(r['작업유형']||''),
         target: String(r['날짜또는대상월']||''), prev: String(r['이전값']||''),
@@ -326,7 +334,11 @@ var svc = {
   stats(rows) {
     var s={};
     TEACHERS.forEach(function(t){ s[t]={name:t,origCount:0,currCount:0,removed:0,added:0}; });
+    function ensure(name){
+      if (name && !s[name]) s[name]={name:name,origCount:0,currCount:0,removed:0,added:0};
+    }
     rows.forEach(function(r){
+      ensure(r.orig); ensure(r.current);
       if(r.orig    && s[r.orig])    s[r.orig].origCount++;
       if(r.current && s[r.current]) s[r.current].currCount++;
       if(r.orig && r.current && r.orig!==r.current){ s[r.orig].removed++; s[r.current].added++; }
@@ -365,7 +377,10 @@ function modal(html, onOk, onCancel) {
   var root=document.getElementById('modalRoot');
   root.innerHTML='<div class="modal-overlay" id="ov">'+html+'</div>';
   var ok=root.querySelector('#mOk'), cn=root.querySelector('#mCancel'), ov=root.querySelector('#ov');
-  if(ok) ok.addEventListener('click',  function(){root.innerHTML='';if(onOk)onOk();});
+  if(ok) ok.addEventListener('click',  function(){
+    try { if(onOk) onOk(); }
+    finally { root.innerHTML=''; }
+  });
   if(cn) cn.addEventListener('click',  function(){root.innerHTML='';if(onCancel)onCancel();});
   if(ov) ov.addEventListener('click',  function(e){if(e.target.id==='ov'){root.innerHTML='';if(onCancel)onCancel();}});
 }
@@ -385,7 +400,13 @@ document.getElementById('tabBar').addEventListener('click',function(e){
 });
 function render(){ ({schedule:P1,assign:P2,swap:P3,stats:P4,logs:P5})[tab](); }
 
-function ysel(id,v){ return '<select id="'+id+'" style="width:88px">'+[2025,2026,2027].map(function(y){return'<option'+(y===v?' selected':'')+'>'+y+'</option>';}).join('')+'</select>'; }
+function ysel(id,v){
+  var base=new Date().getFullYear(), years=[];
+  for(var y=base-1;y<=base+2;y++) years.push(y);
+  if(years.indexOf(v)<0) years.push(v);
+  years.sort(function(a,b){return a-b;});
+  return '<select id="'+id+'" style="width:88px">'+years.map(function(y){return'<option'+(y===v?' selected':'')+'>'+y+'</option>';}).join('')+'</select>';
+}
 function msel(id,v){ return '<select id="'+id+'" style="width:68px">'+Array.from({length:12},function(_,i){return'<option value="'+(i+1)+'"'+(i+1===v?' selected':'')+'>'+(i+1)+'월</option>';}).join('')+'</select>'; }
 
 // ── 잠금 모달 ─────────────────────────────────────────────
@@ -440,8 +461,8 @@ async function P1(){
       var dd=isTod?'<div class="cell-d"><span class="cell-d tod">'+d+'</span></div>':'<div class="cell-d '+(sat?'sat':sun?'sun':'')+'">'+d+'</div>';
       var bd='';
       if(sat||sun) bd='<div style="font-size:10px;color:#9ca3af;margin-top:2px;">주말</div>';
-      else if(excl) bd='<span class="cell-tag b-excluded">'+(row&&row.note?row.note:'제외')+'</span>';
-      else bd='<div class="cell-nm '+(chng?'ch':'')+'">'+row.current+'</div><span class="cell-tag '+(chng?'b-changed':'b-normal')+'">'+(chng?'변경':'정상')+'</span>';
+      else if(excl) bd='<span class="cell-tag b-excluded">'+esc(row&&row.note?row.note:'제외')+'</span>';
+      else bd='<div class="cell-nm '+(chng?'ch':'')+'">'+esc(row.current)+'</div><span class="cell-tag '+(chng?'b-changed':'b-normal')+'">'+(chng?'변경':'정상')+'</span>';
       g+='<div class="'+cls+'">'+dd+bd+'</div>';
     }
     body='<div class="legend"><div class="leg"><div class="leg-dot" style="background:#dcfce7;border:1px solid #16a34a"></div>정상</div><div class="leg"><div class="leg-dot" style="background:#dbeafe;border:1px solid #3b82f6"></div>변경됨</div><div class="leg"><div class="leg-dot" style="background:#f3f4f6;border:1px solid #d1d5db"></div>배정 제외</div></div><div class="cal-wrap"><div class="cal-grid">'+g+'</div></div>';
@@ -459,8 +480,8 @@ async function P1(){
 }
 
 function prtSched(y,m,rows){var w=window.open('','_blank','width=900,height=700');w.document.write(printHTML(y,m,rows));w.document.close();w.focus();setTimeout(function(){w.print();},400);}
-function dlSched(y,m,rows){var b=new Blob([printHTML(y,m,rows)],{type:'text/html;charset=utf-8'});var u=URL.createObjectURL(b);var a=document.createElement('a');a.href=u;a.download='감독표_'+y+'년_'+m+'월.html';a.click();URL.revokeObjectURL(u);toast('다운로드 완료');}
-function printHTML(y,m,rows){var byD={};rows.forEach(function(r){byD[r.date]=r;});var fd=dow(y,m,1),total=dim(y,m);var c=DOW.map(function(d,i){return'<div class="dh '+(i===0?'sun':i===6?'sat':'')+'">'+d+'</div>';}).join('');for(var i=0;i<fd;i++)c+='<div class="cl em"></div>';for(var d=1;d<=total;d++){var ds=fmt(y,m,d),r=byD[ds],dw2=dow(y,m,d);var sat=dw2===6,sun=dw2===0,ex=!r||r.status==='제외',ch=r&&r.status==='변경';var bg=ex?(sat||sun?'#f9fafb':'#f3f4f6'):ch?'#eff6ff':'#fff';var bdr=ch?'#93c5fd':'#e5e7eb';var dc=sat?'#1d4ed8':sun?'#b91c1c':'#9ca3af';var bd='';if(sat||sun)bd='<div style="font-size:10px;color:#9ca3af;">주말</div>';else if(ex)bd='<span style="font-size:10px;background:#f3f4f6;color:#6b7280;padding:1px 5px;border-radius:999px;">'+(r&&r.note?r.note:'제외')+'</span>';else bd='<div style="font-size:13px;font-weight:700;color:'+(ch?'#1d4ed8':'#111')+';">'+r.current+'</div><span style="font-size:10px;padding:1px 5px;border-radius:999px;'+(ch?'background:#dbeafe;color:#1e40af':'background:#dcfce7;color:#166534')+'">'+(ch?'변경':'정상')+'</span>';c+='<div class="cl" style="background:'+bg+';border-color:'+bdr+';opacity:'+(sat||sun||ex?0.6:1)+'"><div style="font-size:11px;font-weight:700;color:'+dc+';">'+d+'</div>'+bd+'</div>';}return'<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>감독표 '+y+'년 '+m+'월</title><style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:"Apple SD Gothic Neo","Noto Sans KR",sans-serif;background:#fff;padding:24px;}h1{font-size:18px;font-weight:700;margin-bottom:4px;}.sub{font-size:13px;color:#6b7280;margin-bottom:16px;}.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}.dh{text-align:center;font-size:11px;font-weight:700;padding:5px 0;color:#9ca3af;}.dh.sat{color:#1d4ed8;}.dh.sun{color:#b91c1c;}.cl{min-height:70px;border-radius:6px;border:1px solid #e5e7eb;padding:5px 6px;}.cl.em{background:transparent;border-color:transparent;}@media print{body{padding:8px;}@page{size:A4 landscape;margin:10mm;}}</style></head><body><h1>본교무실 감독표 '+y+'년 '+m+'월</h1><div class="sub">대진고등학교 · 출력일: '+new Date().toLocaleDateString('ko-KR')+'</div><div class="grid">'+c+'</div></body></html>';}
+function dlSched(y,m,rows){var b=new Blob([printHTML(y,m,rows)],{type:'text/html;charset=utf-8'});var u=URL.createObjectURL(b);var a=document.createElement('a');a.href=u;a.download='감독표_'+y+'년_'+m+'월.html';a.click();setTimeout(function(){URL.revokeObjectURL(u);},1000);toast('다운로드 완료');}
+function printHTML(y,m,rows){var byD={};rows.forEach(function(r){byD[r.date]=r;});var fd=dow(y,m,1),total=dim(y,m);var c=DOW.map(function(d,i){return'<div class="dh '+(i===0?'sun':i===6?'sat':'')+'">'+d+'</div>';}).join('');for(var i=0;i<fd;i++)c+='<div class="cl em"></div>';for(var d=1;d<=total;d++){var ds=fmt(y,m,d),r=byD[ds],dw2=dow(y,m,d);var sat=dw2===6,sun=dw2===0,ex=!r||r.status==='제외',ch=r&&r.status==='변경';var bg=ex?(sat||sun?'#f9fafb':'#f3f4f6'):ch?'#eff6ff':'#fff';var bdr=ch?'#93c5fd':'#e5e7eb';var dc=sat?'#1d4ed8':sun?'#b91c1c':'#9ca3af';var bd='';if(sat||sun)bd='<div style="font-size:10px;color:#9ca3af;">주말</div>';else if(ex)bd='<span style="font-size:10px;background:#f3f4f6;color:#6b7280;padding:1px 5px;border-radius:999px;">'+esc(r&&r.note?r.note:'제외')+'</span>';else bd='<div style="font-size:13px;font-weight:700;color:'+(ch?'#1d4ed8':'#111')+';">'+esc(r.current)+'</div><span style="font-size:10px;padding:1px 5px;border-radius:999px;'+(ch?'background:#dbeafe;color:#1e40af':'background:#dcfce7;color:#166534')+'">'+(ch?'변경':'정상')+'</span>';c+='<div class="cl" style="background:'+bg+';border-color:'+bdr+';opacity:'+(sat||sun||ex?0.6:1)+'"><div style="font-size:11px;font-weight:700;color:'+dc+';">'+d+'</div>'+bd+'</div>';}return'<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>감독표 '+y+'년 '+m+'월</title><style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:"Apple SD Gothic Neo","Noto Sans KR",sans-serif;background:#fff;padding:24px;}h1{font-size:18px;font-weight:700;margin-bottom:4px;}.sub{font-size:13px;color:#6b7280;margin-bottom:16px;}.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}.dh{text-align:center;font-size:11px;font-weight:700;padding:5px 0;color:#9ca3af;}.dh.sat{color:#1d4ed8;}.dh.sun{color:#b91c1c;}.cl{min-height:70px;border-radius:6px;border:1px solid #e5e7eb;padding:5px 6px;}.cl.em{background:transparent;border-color:transparent;}@media print{body{padding:8px;}@page{size:A4 landscape;margin:10mm;}}</style></head><body><h1>본교무실 감독표 '+y+'년 '+m+'월</h1><div class="sub">대진고등학교 · 출력일: '+new Date().toLocaleDateString('ko-KR')+'</div><div class="grid">'+c+'</div></body></html>';}
 
 // ── P2: 월별 배정 ─────────────────────────────────────────
 async function P2(){
@@ -489,9 +510,11 @@ async function P2(){
       if (sat||sun) { grid += '<div class="e-cell wknd">'+dd+'<div style="font-size:10px;color:#9ca3af;margin-top:2px;">주말</div></div>'; continue; }
       if (!row || row.status === '제외') {
         var note = row ? (row.note||'제외') : '제외';
-        grid += '<div class="e-cell excl" data-ds="'+ds+'">'+dd+'<div style="font-size:10px;color:#92400e;font-weight:700;margin-top:2px;">&#128683; '+note+'</div><div class="hint">클릭&#8594;복구</div></div>';
+        grid += '<div class="e-cell excl" data-ds="'+ds+'">'+dd+'<div style="font-size:10px;color:#92400e;font-weight:700;margin-top:2px;">&#128683; '+esc(note)+'</div><div class="hint">클릭&#8594;복구</div></div>';
       } else {
-        var sel = TEACHERS.map(function(t){ return '<option'+(t===row.current?' selected':'')+'>'+t+'</option>'; }).join('');
+        var teachersForRow = TEACHERS.slice();
+        if (row.current && teachersForRow.indexOf(row.current)<0) teachersForRow.unshift(row.current);
+        var sel = teachersForRow.map(function(t){ return '<option'+(t===row.current?' selected':'')+'>'+esc(t)+'</option>'; }).join('');
         grid += '<div class="e-cell normal" data-ds="'+ds+'">'+dd+'<select class="asel" data-ds="'+ds+'">'+sel+'</select><div class="hint">클릭&#8594;제외</div></div>';
       }
     }
@@ -511,7 +534,7 @@ async function P2(){
     +'<button class="btn sm primary" id="bLoad">&#128260; 불러오기</button>'
     +'<button class="btn sm ghost" id="bAuto">자동 배정</button>'
     +'<button class="btn sm ghost" id="bClr">초기화</button>'
-    +'<button class="btn sm success" id="bSave"'+(hasSaved?'':' disabled')+'>&#128190; 저장'+(hasUnsaved?' *':'')+' </button>'
+    +'<button class="btn sm success" id="bSave"'+(hasSaved&&!saveInProgress?'':' disabled')+'>&#128190; 저장'+(hasUnsaved?' *':'')+' </button>'
     +'</div>'
     +(hasUnsaved ? '<div class="info-box">&#9998; 저장되지 않은 변경 사항이 있습니다. [저장]을 눌러주세요.</div>' : '')
     +(!rows.length
@@ -561,10 +584,13 @@ async function P2(){
     var saved = await svc.getSchedule(y, m);
     if (saved.length > 0) {
       store.assignRows = saved;
+      store.userExcl = [];
       store.assignDirty = false;
       toast(y+'년 '+m+'월 배정을 불러왔습니다.');
     } else {
       store.assignRows = [];
+      store.userExcl = [];
+      store.assignDirty = false;
       toast('저장된 배정이 없습니다. 자동 배정을 사용하세요.', true);
     }
     render();
@@ -581,19 +607,29 @@ async function P2(){
 
   // ── 초기화 ──
   document.getElementById('bClr').addEventListener('click', function(){
+    st.assign.y = +document.getElementById('as_y').value;
+    st.assign.m = +document.getElementById('as_m').value;
     store.assignRows = []; store.userExcl = []; store.assignDirty = false; render();
   });
 
   // ── 저장 ──
   document.getElementById('bSave').addEventListener('click', async function(){
-    if (!store.assignRows.length) return;
-    var ok = await svc.saveSchedule(store.assignRows, st.assign.y, st.assign.m, user());
-    if (ok) {
-      store.assignDirty = false;
-      toast(st.assign.y+'년 '+st.assign.m+'월 감독표가 저장되었습니다.');
-      render();  // 저장 후 달력 유지 (버튼의 * 제거)
-    } else {
-      toast('저장 실패', true);
+    if (!store.assignRows.length || saveInProgress) return;
+    saveInProgress = true;
+    var btn = document.getElementById('bSave');
+    if (btn) btn.disabled = true;
+    try {
+      var ok = await svc.saveSchedule(store.assignRows, st.assign.y, st.assign.m, user());
+      if (ok) {
+        store.assignDirty = false;
+        toast(st.assign.y+'년 '+st.assign.m+'월 감독표가 저장되었습니다.');
+        render();  // 저장 후 달력 유지 (버튼의 * 제거)
+      } else {
+        toast('저장 실패', true);
+      }
+    } finally {
+      saveInProgress = false;
+      if (btn) btn.disabled = false;
     }
   });
 
@@ -652,11 +688,11 @@ async function P3(){
       var isA=s.selA&&s.selA.date===ds, isB=s.selB&&s.selB.date===ds, ch=row&&row.status==='변경';
       var dd='<div class="cell-d '+(sat?'sat':sun?'sun':'')+'">'+d+'</div>';
       if(sat||sun){g+='<div class="s-cell wknd">'+dd+'<div style="font-size:10px;color:#9ca3af;margin-top:2px;">주말</div></div>';continue;}
-      if(ex){g+='<div class="s-cell excl">'+dd+'<span class="cell-tag b-excluded">'+(row&&row.note?row.note:'제외')+'</span></div>';continue;}
+      if(ex){g+='<div class="s-cell excl">'+dd+'<span class="cell-tag b-excluded">'+esc(row&&row.note?row.note:'제외')+'</span></div>';continue;}
       var cls='s-cell normal'; if(isA)cls='s-cell sel-a'; else if(isB)cls='s-cell sel-b'; else if(ch)cls='s-cell normal changed-cell';
       var nc=isA?'color:#1e40af;':isB?'color:#166534;':ch?'color:#1d4ed8;':'color:#111;';
       var tag=isA?'<span class="cell-tag b-changed" style="margin-top:2px;">① 선택됨</span>':isB?'<span class="cell-tag b-normal" style="margin-top:2px;">② 선택됨</span>':ch?'<span class="cell-tag b-changed" style="margin-top:2px;">변경됨</span>':'';
-      g+='<div class="'+cls+'" data-ds="'+ds+'">'+dd+'<div style="font-size:12px;font-weight:700;margin-top:2px;'+nc+'">'+(row.current||'')+'</div>'+tag+'</div>';
+      g+='<div class="'+cls+'" data-ds="'+ds+'">'+dd+'<div style="font-size:12px;font-weight:700;margin-top:2px;'+nc+'">'+esc(row.current||'')+'</div>'+tag+'</div>';
     }
     grid='<div class="cal-wrap"><div class="cal-grid" id="swG">'+g+'</div></div>';
   }
@@ -686,11 +722,12 @@ async function P3(){
 
   var bcfm=document.getElementById('bCfm');
   if(bcfm) bcfm.addEventListener('click',function(){
+    if(!unlocked){ lockModal(); return; }
     var A=s.selA, B=s.selB;
     modal(
       '<div class="modal"><h3>&#128260; 감독 교체 확인</h3>'
-      +'<div class="swap-card"><div class="swap-half from"><div class="swap-label">① 날짜</div><div class="swap-date">'+A.date+'</div><div class="swap-name">'+A.teacher+'</div><div class="swap-dow">'+A.dow+'요일</div></div>'
-      +'<div class="swap-half to"><div class="swap-label">② 날짜</div><div class="swap-date">'+B.date+'</div><div class="swap-name">'+B.teacher+'</div><div class="swap-dow">'+B.dow+'요일</div></div></div>'
+      +'<div class="swap-card"><div class="swap-half from"><div class="swap-label">① 날짜</div><div class="swap-date">'+esc(A.date)+'</div><div class="swap-name">'+esc(A.teacher)+'</div><div class="swap-dow">'+esc(A.dow)+'요일</div></div>'
+      +'<div class="swap-half to"><div class="swap-label">② 날짜</div><div class="swap-date">'+esc(B.date)+'</div><div class="swap-name">'+esc(B.teacher)+'</div><div class="swap-dow">'+esc(B.dow)+'요일</div></div></div>'
       +'<div class="swap-arrow-wrap">&#8644; 두 날짜의 감독자를 서로 맞바꿉니다</div>'
       +'<div style="margin-top:.875rem;"><div style="font-size:12px;color:#6b7280;margin-bottom:4px;">교체 사유 (선택)</div><input type="text" id="swRsn" placeholder="예: 출장, 연수" style="width:100%"></div>'
       +'<div class="modal-btns"><button class="btn ghost" id="mCancel">취소</button><button class="btn primary" id="mOk">교체 확정</button></div></div>',
@@ -720,7 +757,7 @@ async function P4(){
           return'<div style="background:#f9fafb;border-radius:8px;padding:.875rem"><div style="font-size:11px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:4px">'+x[0]+'</div><div style="font-size:24px;font-weight:700">'+x[1]+'</div></div>';
         }).join('')+'</div>'
         +'<div class="overflow-x"><table><thead><tr><th>이름</th><th>원래 배정</th><th>현재 배정</th><th>빠진 횟수</th><th>추가 횟수</th><th>차이</th></tr></thead><tbody>'
-        +stats.map(function(r){var d=r.currCount-r.origCount;return'<tr><td style="font-weight:700">'+r.name+'</td><td>'+r.origCount+'</td><td style="font-weight:600">'+r.currCount+'</td><td style="color:'+(r.removed?'#b91c1c':'#9ca3af')+'">'+r.removed+'</td><td style="color:'+(r.added?'#15803d':'#9ca3af')+'">'+r.added+'</td><td style="font-weight:700;color:'+(d>0?'#15803d':d<0?'#b91c1c':'#9ca3af')+'">'+(d>0?'+':'')+d+'</td></tr>';}).join('')
+        +stats.map(function(r){var d=r.currCount-r.origCount;return'<tr><td style="font-weight:700">'+esc(r.name)+'</td><td>'+r.origCount+'</td><td style="font-weight:600">'+r.currCount+'</td><td style="color:'+(r.removed?'#b91c1c':'#9ca3af')+'">'+r.removed+'</td><td style="color:'+(r.added?'#15803d':'#9ca3af')+'">'+r.added+'</td><td style="font-weight:700;color:'+(d>0?'#15803d':d<0?'#b91c1c':'#9ca3af')+'">'+(d>0?'+':'')+d+'</td></tr>';}).join('')
         +'</tbody></table></div>')
     +'</div>';
 
@@ -735,7 +772,7 @@ async function P5(){
     '<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.875rem"><div style="font-weight:700;font-size:14px">변경 이력</div><span style="font-size:11px;color:#9ca3af">총 '+logs.length+'건</span></div>'
     +(!logs.length?'<div class="info-box">변경 이력이 없습니다.</div>'
       :'<div class="overflow-x"><table><thead><tr><th>변경시간</th><th>유형</th><th>대상</th><th class="hide-m">이전값</th><th>새값</th><th class="hide-m">작업자</th><th class="hide-m">사유</th></tr></thead><tbody>'
-        +logs.map(function(l){return'<tr><td style="font-size:11px;white-space:nowrap;color:#6b7280">'+l.time+'</td><td><span class="badge b-'+(l.type==='교체'?'swap':l.type==='월배정'?'auto':'b-normal')+'">'+l.type+'</span></td><td style="font-size:12px">'+l.target+'</td><td class="hide-m" style="color:#9ca3af">'+(l.prev||'–')+'</td><td style="font-weight:600">'+(l.next||'–')+'</td><td class="hide-m" style="font-size:12px">'+(l.user||'–')+'</td><td class="hide-m" style="color:#9ca3af;font-size:12px">'+(l.reason||'–')+'</td></tr>';}).join('')
+        +logs.map(function(l){return'<tr><td style="font-size:11px;white-space:nowrap;color:#6b7280">'+esc(l.time)+'</td><td><span class="badge b-'+(l.type==='교체'?'swap':l.type==='월배정'?'auto':'b-normal')+'">'+esc(l.type)+'</span></td><td style="font-size:12px">'+esc(l.target)+'</td><td class="hide-m" style="color:#9ca3af">'+esc(l.prev||'–')+'</td><td style="font-weight:600">'+esc(l.next||'–')+'</td><td class="hide-m" style="font-size:12px">'+esc(l.user||'–')+'</td><td class="hide-m" style="color:#9ca3af;font-size:12px">'+esc(l.reason||'–')+'</td></tr>';}).join('')
         +'</tbody></table></div>')
     +'</div>';
 }
